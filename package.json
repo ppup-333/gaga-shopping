@@ -9,9 +9,9 @@
     "dev:client": "npm run --prefix client dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "build:client": "npm run --prefix client build",
-    "build": "npm install --prefix client --include=dev && npm run build:client && npx prisma generate",
-    "prisma:generate": "npx prisma generate",
-    "prisma:push": "npx prisma db push",
+    "build": "npm install --include=dev && npm install --prefix client --include=dev && npm run build:client && npx prisma@6 generate",
+    "prisma:generate": "npx prisma@6 generate",
+    "prisma:push": "npx prisma@6 db push",
     "prisma:seed": "node server/src/seed.js",
     "db:backup": "node scripts/backup.js",
     "db:restore": "node scripts/restore.js"
