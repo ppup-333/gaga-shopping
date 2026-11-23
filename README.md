@@ -15,25 +15,32 @@
 
 ---
 
-## 🛡️ Render 免費 PostgreSQL 30 天防清除機制
+## 🛡️ Render 免費 PostgreSQL 30 天防清除機制 (同 gagagaga 刷新防呆架構)
 
-Render 官方政策規定：免費版 PostgreSQL 資料庫於建立後 **第 30 天會被強制清除並銷毀**。  
-為此，本架構內建了 **雙層防護機制**：
+Render 官方政策規定：免費版 PostgreSQL 資料庫於建立後第 30 天會清除過期資料。  
+本系統已全面對齊 **gagagaga** 專案的資料刷新防護機制，並提供完整的自動化與手動管理：
 
 ```
-                    ┌── 1. GitHub Actions (自動化) ── 每 25 天自動 pg_dump 備份至 GitHub Artifacts
+                    ┌── 1. 資料刷新機制 (主要核心，同 gagagaga) ── 年齡 >= 20天自動重建更新 createdAt，重設 30天週期
                     │
-Render 30天防刪機制 ┤
+Render 30天防刪機制 ┼── 2. 後台一鍵手動刷新與狀態監控 ────── 隨時手動觸發刷新，即時查看上一次刷新時間與筆數
                     │
-                    └── 2. 後台一鍵 JSON 匯出/還原 ── 隨時手動打包下載，換新 DB 10 秒瞬間復原
+                    └── 3. 次要災難防護 (JSON 匯出/還原) ──────── 隨時手動打包下載 JSON，移機或換 DB 10 秒瞬間復原
 ```
 
-1. **自動排程防護 (`.github/workflows/render-db-backup.yml`)**：
-   - 每 25 天（在 30 天到期前）由 GitHub Actions 自動啟動。
-   - 使用 `pg_dump` 將 Render 資料庫完整匯出，並加密存於 GitHub 安全儲存（90 天保存期）。
-2. **管理員一鍵匯出與還原**：
-   - 系統管理員可在後台「Render 30天備份與還原」頁籤一鍵點擊「立即下載資料庫備份檔 (.json)」。
-   - 當 Render 30 天到期更換新 DB 連線字串後，只需選取此備份檔上傳，10 秒內瞬間還原所有帳號、倉庫、物品與訂單！
+### 1. 資料自動刷新機制 (同 gagagaga)
+* **判定條件**：在 30 天保留期限中，若資料年齡 >= 20 天（即 10 天內會被清除），自動以原資料內容與 ID 重新更新時間戳記 (`createdAt = NOW()`)。
+* **開機自動執行**：Node.js Express 伺服器每次啟動時，立即自動觸發 `checkAndRefreshExpiringData()` 檢查全庫並刷新。
+* **紀錄追蹤**：刷新完成後自動將 `last_refresh_time` 與 `last_refreshed_count` 記錄於 `SystemMeta` 表格中。
+
+### 2. 管理員後台控制與 API
+* **後台介面**：系統管理員進入「系統管理與資料防護」➜「Render 30天資料刷新與備份」，可即時檢視上一次刷新時間與筆數，並點擊「⚡ 立即手動刷新資料」。
+* **API 端點**：
+  * `GET /api/admin/refresh-status`：取得上次刷新時間與數量（支援 JWT ADMIN 權限或 `?adminPassword=iamadmin`）。
+  * `POST /api/admin/refresh`：手動觸發資料庫刷新檢測與重建取代。
+
+### 3. 次要災難備援 (一鍵匯出與還原 JSON)
+* 系統管理員可在同頁面點擊「立即下載資料庫備份檔 (.json)」，亦支援上傳備份 JSON 一鍵還原全庫資料。
 
 ---
 

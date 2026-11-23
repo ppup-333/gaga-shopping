@@ -38,6 +38,7 @@ app.use('/api/items', require('./routes/items'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/stats', require('./routes/stats'));
 app.use('/api/backup', require('./routes/backup'));
+app.use('/api/admin', require('./routes/admin'));
 
 // 託管前端編譯後的靜態 SPA (Render 部署模式)
 const clientBuildPath = path.join(__dirname, '../../client/dist');
@@ -71,4 +72,16 @@ app.listen(PORT, () => {
   console.log(`🌐 Local URL: http://localhost:${PORT}`);
   console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
   console.log(`===============================================`);
+
+  // 伺服器啟動時執行資料庫初始化與刷新檢查 (同 gagagaga 30天防刪除刷新機制)
+  const { checkAndRefreshExpiringData } = require('./services/refreshService');
+  (async () => {
+    console.log("正在執行伺服器啟動時的資料刷新檢查...");
+    try {
+      const res = await checkAndRefreshExpiringData();
+      console.log(`伺服器啟動刷新檢查完成：上一次刷新時間為 ${res.lastRefreshTime}，共刷新 ${res.refreshedCount} 筆。`);
+    } catch (err) {
+      console.error("伺服器啟動時資料刷新失敗：", err);
+    }
+  })();
 });

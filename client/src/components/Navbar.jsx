@@ -99,7 +99,7 @@ export default function Navbar({ currentTab, setCurrentTab, openLoginModal, cart
                 }`}
               >
                 <ShieldCheck className="w-4 h-4 text-purple-600" />
-                <span>系統管理與備份</span>
+                <span>系統管理與資料防護</span>
               </button>
             )}
           </nav>

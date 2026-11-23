@@ -145,4 +145,35 @@ router.post('/import', async (req, res) => {
   }
 });
 
+// 資料刷新機制端點 (同 gagagaga 機制別名支援)
+const { checkAndRefreshExpiringData, getLastRefreshStatus } = require('../services/refreshService');
+
+router.get('/refresh-status', async (req, res) => {
+  try {
+    const status = await getLastRefreshStatus();
+    res.json({
+      success: true,
+      lastRefreshTime: status.lastRefreshTime,
+      lastRefreshedCount: status.lastRefreshedCount
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: '讀取刷新狀態失敗' });
+  }
+});
+
+router.post('/refresh', async (req, res) => {
+  try {
+    const force = Boolean(req.body?.force || req.query?.force);
+    const result = await checkAndRefreshExpiringData(force);
+    res.json({
+      success: true,
+      lastRefreshTime: result.lastRefreshTime,
+      refreshedCount: result.refreshedCount,
+      message: `刷新機制執行成功！共檢測並重建取代 ${result.refreshedCount} 筆在 10 天內即將過期的資料。`
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: '手動觸發資料刷新失敗' });
+  }
+});
+
 module.exports = router;

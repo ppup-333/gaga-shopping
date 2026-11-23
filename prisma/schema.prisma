@@ -78,3 +78,10 @@ model OrderItem {
   quantity  Int
   createdAt DateTime @default(now())
 }
+
+model SystemMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+

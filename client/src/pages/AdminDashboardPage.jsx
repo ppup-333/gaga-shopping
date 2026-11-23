@@ -46,6 +46,76 @@ export default function AdminDashboardPage() {
   const [importing, setImporting] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // 資料刷新機制狀態 (同 gagagaga 30天防刪除刷新機制)
+  const [lastRefreshTime, setLastRefreshTime] = useState('載入中...');
+  const [lastRefreshedCount, setLastRefreshedCount] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshHint, setRefreshHint] = useState({ text: '', type: '' });
+
+  // 取得刷新狀態
+  const fetchRefreshStatus = async () => {
+    try {
+      const res = await fetch('/api/admin/refresh-status', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.lastRefreshTime) {
+        setLastRefreshTime(data.lastRefreshTime);
+        setLastRefreshedCount(data.lastRefreshedCount || 0);
+      } else {
+        setLastRefreshTime('尚未記錄');
+      }
+    } catch (err) {
+      console.error('取得刷新狀態失敗', err);
+      setLastRefreshTime('讀取失敗');
+    }
+  };
+
+  // 手動觸發資料刷新 (同 gagagaga)
+  const triggerManualRefresh = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    setRefreshHint({ text: '正在檢查並刷新 10 天內即將過期的資料...', type: 'info' });
+
+    try {
+      const res = await fetch('/api/admin/refresh', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        if (data.lastRefreshTime) {
+          setLastRefreshTime(data.lastRefreshTime);
+          setLastRefreshedCount(data.refreshedCount || 0);
+        }
+        setRefreshHint({
+          text: data.message || `刷新成功！共重建取代 ${data.refreshedCount} 筆資料。`,
+          type: 'success'
+        });
+        fetchUsers();
+        fetchWarehouses();
+      } else {
+        setRefreshHint({
+          text: data.message || '刷新執行失敗',
+          type: 'error'
+        });
+      }
+    } catch (err) {
+      console.error('觸發手動刷新出錯', err);
+      setRefreshHint({
+        text: '網路異常或伺服器連線失敗，請稍後再試！',
+        type: 'error'
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   // 載入使用者
   const fetchUsers = async () => {
     try {
@@ -72,8 +142,14 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchUsers(), fetchWarehouses()]).finally(() => setLoading(false));
+    Promise.all([fetchUsers(), fetchWarehouses(), fetchRefreshStatus()]).finally(() => setLoading(false));
   }, [token]);
+
+  useEffect(() => {
+    if (activeTab === 'backup') {
+      fetchRefreshStatus();
+    }
+  }, [activeTab]);
 
   // 使用者 CRUD 操作
   const handleSaveUser = async (e) => {
@@ -273,12 +349,12 @@ export default function AdminDashboardPage() {
           onClick={() => setActiveTab('backup')}
           className={`pb-3 px-4 text-sm font-bold flex items-center gap-2 border-b-2 transition ${
             activeTab === 'backup'
-              ? 'border-purple-600 text-purple-700'
+              ? 'border-sky-600 text-sky-700'
               : 'border-transparent text-slate-500 hover:text-slate-800'
           }`}
         >
-          <Database className="w-4 h-4" />
-          <span>Render 30天備份與還原</span>
+          <RefreshCw className="w-4 h-4" />
+          <span>Render 30天資料刷新與備份</span>
         </button>
       </div>
 
@@ -415,68 +491,139 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
-      {/* Tab 3: Render 30 天資料庫備份與還原 */}
+      {/* Tab 3: Render 30 天資料庫刷新與災難備份 (同 gagagaga 刷新防呆架構) */}
       {activeTab === 'backup' && (
         <div className="space-y-6">
-          <div className="bg-amber-50 border border-amber-200 p-5 rounded-2xl flex items-start gap-3">
-            <AlertTriangle className="w-6 h-6 text-amber-600 flex-shrink-0 mt-0.5" />
-            <div className="text-xs text-amber-900 space-y-1">
-              <div className="font-bold text-sm">Render 免費 PostgreSQL 30 天清除防範說明</div>
-              <p>Render 的免費 PostgreSQL 於建立滿 30 天時會自動被系統回收刪除。本系統為您建立了兩道防護線：</p>
-              <ul className="list-disc pl-4 space-y-0.5 mt-1">
-                <li><strong>自動化管道：</strong>專案中已內建 GitHub Actions (`.github/workflows/render-db-backup.yml`)，每 25 天自動定時 dump 備份。</li>
-                <li><strong>手動一鍵備份與還原：</strong>此處提供隨時將全庫資料打包下載 JSON，日後若在 Render 建立新的資料庫，只需將檔案上傳即可 10 秒瞬間復原所有帳號、倉庫、物品與訂單！</li>
-              </ul>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* 匯出備份 */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <Download className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-800 text-sm">一鍵匯出全資料庫 JSON</h3>
+          {/* 資料刷新機制控制卡片 (同 gagagaga admin-refresh-box) */}
+          <div className="bg-sky-50 border-2 border-sky-200 p-6 rounded-2xl shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sky-200/80 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-sky-500 text-white rounded-xl shadow-sm">
+                  <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sky-950 text-base">
+                    🔄 資料刷新機制 (30天保留防呆)
+                  </h3>
+                  <p className="text-xs text-sky-800">
+                    同 gagagaga 防清除機制：定期重建更新即將過期資料，常保資料庫活躍
+                  </p>
+                </div>
               </div>
-              <p className="text-xs text-slate-500">
-                將包含使用者、各倉庫、庫存物品資料與所有訂單，完整匯出成標準結構的 JSON 備份檔案儲存於您的本機。
+
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-700 bg-white/80 border border-sky-200 px-3.5 py-2 rounded-xl">
+                <span>上一次刷新時間：</span>
+                <strong className="text-sky-700 font-bold">{lastRefreshTime}</strong>
+                {lastRefreshedCount > 0 && (
+                  <span className="ml-1 bg-sky-100 text-sky-800 font-semibold px-2 py-0.5 rounded-full">
+                    刷新 {lastRefreshedCount} 筆
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="text-xs text-sky-900 leading-relaxed space-y-2">
+              <p>
+                <strong>運作原理：</strong>在 Render 30 天保留期限中，若資料年齡 &ge; 20 天（即 10 天內會被系統清除），自動或手動將該筆資料以相同內容重新建立並更新建立時間戳記為當前時間，重設 30 天週期。
               </p>
+              <p className="text-sky-700">
+                ⚡ <strong>自動防護：</strong>系統於每次伺服器啟動開機時，皆會自動執行全庫檢測與刷新。您亦可在下方隨時手動觸發立即刷新。
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <button
-                onClick={handleExportBackup}
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow transition flex items-center justify-center gap-2"
+                onClick={triggerManualRefresh}
+                disabled={isRefreshing}
+                className="px-5 py-2.5 bg-sky-600 hover:bg-sky-700 active:scale-95 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-600/20 transition flex items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Download className="w-4 h-4" />
-                <span>立即下載資料庫備份檔 (.json)</span>
+                <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                <span>{isRefreshing ? '🔄 刷新檢查中...' : '⚡ 立即手動刷新資料'}</span>
               </button>
-            </div>
 
-            {/* 匯入還原 */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center gap-2">
-                <Upload className="w-5 h-5 text-purple-600" />
-                <h3 className="font-bold text-slate-800 text-sm">一鍵匯入還原資料庫</h3>
-              </div>
-              <p className="text-xs text-slate-500">
-                當更換新的 Render 免費資料庫時，上傳先前的備份檔案，系統將自動寫入所有關聯資料。
-              </p>
-              <label className="w-full py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold shadow transition flex items-center justify-center gap-2 cursor-pointer">
-                <Upload className="w-4 h-4" />
-                <span>{importing ? '還原中...' : '選取備份檔案並開始還原'}</span>
-                <input
-                  type="file"
-                  accept=".json"
-                  onChange={handleImportBackup}
-                  disabled={importing}
-                  className="hidden"
-                />
-              </label>
+              {refreshHint.text && (
+                <div
+                  className={`text-xs font-semibold px-3.5 py-2 rounded-xl border flex items-center gap-2 ${
+                    refreshHint.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : refreshHint.type === 'error'
+                      ? 'bg-rose-50 text-rose-800 border-rose-200'
+                      : 'bg-blue-50 text-blue-800 border-blue-200'
+                  }`}
+                >
+                  {refreshHint.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  ) : refreshHint.type === 'error' ? (
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
+                  )}
+                  <span>{refreshHint.text}</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {backupStatus && (
-            <div className="p-4 bg-slate-900 text-white rounded-2xl text-xs font-mono">
-              {backupStatus}
+          {/* 備份與還原雙層安全防護 */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Database className="w-5 h-5 text-slate-700" />
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm">次要災難復原防護：JSON 匯出與還原</h4>
+                <p className="text-xs text-slate-500">
+                  除了自動資料刷新之外，您亦可隨時匯出 JSON 備份檔保存至本機，防範極端硬體故障或人為誤刪
+                </p>
+              </div>
             </div>
-          )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+              {/* 匯出備份 */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Download className="w-4 h-4 text-blue-600" />
+                  <h5 className="font-bold text-slate-800 text-xs">一鍵匯出全資料庫 JSON</h5>
+                </div>
+                <p className="text-xs text-slate-500">
+                  完整匯出使用者、各倉庫、庫存物品資料與所有訂單，儲存成標準結構的 JSON 備份檔。
+                </p>
+                <button
+                  onClick={handleExportBackup}
+                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center justify-center gap-2"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>立即下載備份檔 (.json)</span>
+                </button>
+              </div>
+
+              {/* 匯入還原 */}
+              <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-purple-600" />
+                  <h5 className="font-bold text-slate-800 text-xs">一鍵匯入還原資料庫</h5>
+                </div>
+                <p className="text-xs text-slate-500">
+                  更換新資料庫或進行資料移轉時，上傳備份 JSON，系統自動還原所有關聯資料。
+                </p>
+                <label className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold shadow-sm transition flex items-center justify-center gap-2 cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{importing ? '還原中...' : '選取備份檔案開始還原'}</span>
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={handleImportBackup}
+                    disabled={importing}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {backupStatus && (
+              <div className="p-3 bg-slate-900 text-white rounded-xl text-xs font-mono">
+                {backupStatus}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
