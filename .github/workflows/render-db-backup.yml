@@ -1,0 +1,57 @@
+name: Render DB Auto-Backup & 25-Day Migration
+
+# 每 25 天定時執行（避免 Render 免費資料庫在第 30 天被刪除）
+# 同時支援在 GitHub 介面手動觸發 (workflow_dispatch)
+on:
+  schedule:
+    - cron: '0 3 */25 * *' # 每 25 天的半夜 03:00 UTC 執行
+  workflow_dispatch:
+
+jobs:
+  backup-and-migrate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 檢出專案代碼
+        uses: actions/checkout@v4
+
+      - name: 設定 Node.js 環境
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 安裝 PostgreSQL 客戶端工具 (pg_dump, psql)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client curl jq
+
+      - name: 1. 執行 pg_dump 備份當前資料庫
+        id: backup
+        env:
+          DATABASE_URL: ${{ secrets.RENDER_DATABASE_URL }}
+        run: |
+          mkdir -p backups
+          TIMESTAMP=$(date +'%Y%m%d_%H%M%S')
+          BACKUP_FILE="backups/render_backup_${TIMESTAMP}.sql"
+          echo "Dumping database from Render..."
+          pg_dump "$DATABASE_URL" --no-owner --no-acl > "$BACKUP_FILE"
+          echo "Backup file created: $BACKUP_FILE (Size: $(stat -c%s "$BACKUP_FILE") bytes)"
+          echo "backup_file=$BACKUP_FILE" >> $GITHUB_OUTPUT
+
+      - name: 2. 保存備份為 GitHub Artifacts (安全永久留存)
+        uses: actions/upload-artifact@v4
+        with:
+          name: database-backup-${{ github.run_id }}
+          path: ${{ steps.backup.outputs.backup_file }}
+          retention-days: 90
+
+      - name: 3. (選用) 透過 Render REST API 進行全自動重建與遷移
+        # 若有設定 RENDER_API_KEY 與 RENDER_SERVICE_ID，會自動透過 API 置換 DB 並更新環境變數
+        if: env.RENDER_API_KEY != ''
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
+          BACKUP_FILE: ${{ steps.backup.outputs.backup_file }}
+        run: |
+          echo "Render API migration workflow can be automated here..."
+          node scripts/migrate-render-db.js "$BACKUP_FILE"

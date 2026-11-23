@@ -1,0 +1,36 @@
+# Render Blueprint Configuration (Infrastructure as Code)
+# 使用 Render 1-Click Blueprint 自動部署免費 Web Service 與免費 PostgreSQL
+
+services:
+  - type: web
+    name: gaga-shopping-service
+    runtime: node
+    plan: free # Render 免費方案 (512MB RAM)
+    region: singapore # 或 oregon / frankfurt
+    buildCommand: npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gaga-inventory-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      # Cloudinary 設定（可至 Cloudinary 免費註冊取得，確保圖片永久保存不怕重啟）
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+
+databases:
+  - name: gaga-inventory-db
+    plan: free # Render 30 天免費 PostgreSQL 方案
+    region: singapore
+    databaseName: gagadb
+    user: gagauser

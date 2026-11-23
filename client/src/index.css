@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* 改善行動裝置按鈕觸控體驗 */
+button, input, select, textarea {
+  touch-action: manipulation;
+}
