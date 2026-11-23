@@ -1,5 +1,5 @@
 # Render Blueprint Configuration (Infrastructure as Code)
-# 使用 Render 1-Click Blueprint 自動部署免費 Web Service 與免費 PostgreSQL
+# 使用現有 PostgreSQL 資料庫部署 Web Service
 
 services:
   - type: web
@@ -15,22 +15,8 @@ services:
       - key: PORT
         value: 10000
       - key: DATABASE_URL
-        fromDatabase:
-          name: gaga-inventory-db
-          property: connectionString
+        sync: false # 沿用現有資料庫：部署時貼入現有 PostgreSQL 的 Internal Database URL
       - key: JWT_SECRET
         generateValue: true
-      # Cloudinary 設定（可至 Cloudinary 免費註冊取得，確保圖片永久保存不怕重啟）
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
-        sync: false
-
-databases:
-  - name: gaga-inventory-db
-    plan: free # Render 30 天免費 PostgreSQL 方案
-    region: singapore
-    databaseName: gagadb
-    user: gagauser
+      # 若日後要啟用 Cloudinary 永久圖床，可直接在 Render Web Service 的 Environment 頁籤新增：
+      # CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
