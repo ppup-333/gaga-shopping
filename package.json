@@ -4,7 +4,7 @@
   "description": "Multi-warehouse inventory and order registration system optimized for Render",
   "main": "server/src/index.js",
   "scripts": {
-    "start": "node server/src/index.js",
+    "start": "npx prisma@6 db push --skip-generate && node server/src/seed.js && node server/src/index.js",
     "dev:server": "node --watch server/src/index.js",
     "dev:client": "npm run --prefix client dev",
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
